@@ -2,7 +2,13 @@
 
 namespace Gos\Bundle\PubSubRouterBundle\DependencyInjection\CompilerPass;
 
+use Gos\Bundle\PubSubRouterBundle\Cache\PhpFileCacheDecorator;
+use Gos\Bundle\PubSubRouterBundle\Command\DebugRouterCommand;
 use Gos\Bundle\PubSubRouterBundle\DependencyInjection\Configuration;
+use Gos\Bundle\PubSubRouterBundle\Generator\Generator;
+use Gos\Bundle\PubSubRouterBundle\Loader\YamlFileLoader;
+use Gos\Bundle\PubSubRouterBundle\Matcher\Matcher;
+use Gos\Bundle\PubSubRouterBundle\Tokenizer\TokenizerCacheDecorator;
 use Symfony\Component\Config\Definition\Processor;
 use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
@@ -19,13 +25,13 @@ class RouterCompilerPass implements CompilerPassInterface
         $processor = new Processor();
         $configs = $processor->processConfiguration(new Configuration(), $container->getExtensionConfig('gos_pubsub_router'));
 
-        $configs['loaders'][] = '@gos_pubsub_router.yaml.loader';
+        $configs['loaders'][] = '@'.YamlFileLoader::class;
         $container->setParameter('gos_pubsub_registered_routers', array_keys($configs['routers']));
 
-        $debugCmdDef = $container->getDefinition('gos_pubsub_router.debug.command');
+        $debugCmdDef = $container->getDefinition(DebugRouterCommand::class);
 
         //Replace default tokenizer by the decorated tokenizer
-        $container->setAlias('gos_pubsub_router.tokenizer', 'gos_pubsub_router.tokenizer.cache_decorator');
+        $container->setAlias('gos_pubsub_router.tokenizer', TokenizerCacheDecorator::class);
 
         foreach ($configs['routers'] as $name => $routerConf) {
 
@@ -35,13 +41,13 @@ class RouterCompilerPass implements CompilerPassInterface
             $container->setDefinition($collectionServiceName, $collectionDef);
 
             //Matcher
-            $matcherDef = $container->getDefinition('gos_pubsub_router.matcher');
+            $matcherDef = $container->getDefinition(Matcher::class);
             $matcherDef
                 ->setClass($configs['matcher_class'])
                 ->addMethodCall('setCollection', [new Reference($collectionServiceName)]);
 
             //Generator
-            $generatorDef = $container->getDefinition('gos_pubsub_router.generator');
+            $generatorDef = $container->getDefinition(Generator::class);
             $generatorDef
                 ->setClass($configs['generator_class'])
                 ->addMethodCall('setCollection', [new Reference($collectionServiceName)]);
@@ -57,7 +63,7 @@ class RouterCompilerPass implements CompilerPassInterface
             
             $routeLoaderDef->setArguments([
                 new Reference($collectionServiceName),
-                new Reference('gos_pubsub_router.php_file.cache'),
+                new Reference(PhpFileCacheDecorator::class),
                 $name,
             ]);
 
@@ -84,8 +90,8 @@ class RouterCompilerPass implements CompilerPassInterface
 
             $routerDef = new Definition($configs['router_class'], [
                 new Reference($collectionServiceName),
-                new Reference('gos_pubsub_router.matcher'),
-                new Reference('gos_pubsub_router.generator'),
+                new Reference(Matcher::class),
+                new Reference(Generator::class),
                 new Reference($routeLoaderServiceName),
                 $name,
             ]);
